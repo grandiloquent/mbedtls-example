@@ -276,7 +276,7 @@ int main() {
     LOGE("%s:%d\n", "ssl_certificates", ret);
     goto exit;
   }
-  ret = ssl_connect(h, host, "443");
+  ret = ssl_connect(h, host, port);
 
   if (ret != 0) {
     LOGE("%s:%d\n", "ssl_connect", ret);
@@ -297,7 +297,7 @@ int main() {
 
   char *buf_header = get_header(host, path);
 
-  ret = ssl_write(h, buf_header, strlen(buf_header));
+  ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
   free(buf_header);
   if (ret != 0) {
     LOGE("%s:%d\n", "ssl_write", ret);
@@ -307,10 +307,13 @@ int main() {
   char *buf = ssl_read(h);
   mbedtls_ssl_close_notify(&h->ssl);
 
-  LOGE("buf length %lld\n", strlen(buf));
-  free(buf);
-  exit:
+  if (buf != NULL) {
+    LOGE("buf length %lld\n %s", strlen(buf), buf);
+    //free(buf);
+  }
 
+  // --------------------------
+  exit:
   ssl_close(h);
 
 }
