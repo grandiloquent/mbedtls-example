@@ -200,10 +200,11 @@ char *ssl_read(https *h) {
 
     rret = mbedtls_ssl_read(&h->ssl, buf + size, capacity - size);
 
+    // trying parse the body length
     if (tmp == NULL && (tmp = strstr(buf, "Content-Length: ")) != NULL) {
       tmp = tmp + strlen("Content-Length: ");
 
-      for (int i = 0, j = strlen(tmp); i < j && tmp[i] != 0; ++i) {
+      for (int i = 0, j = strlen(tmp); i < j; ++i) {
         if (tmp[i] == '\r') {
           char buf_content[i + 1];
           tmp = memcpy(buf_content, tmp, i + 1);
@@ -215,6 +216,7 @@ char *ssl_read(https *h) {
       }
 
     }
+
     if (content_length != 0) {
       char *buf_body = strstr(buf, "\r\n\r\n");
       if (buf_body != NULL && strlen(buf_body) + 4 >= content_length) {
