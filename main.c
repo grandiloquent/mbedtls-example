@@ -8,6 +8,7 @@
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/certs.h>
 #include <errno.h>
+#include <sys/stat.h>
 #include "ca_cert.h"
 
 #define LOGE(fmt, ...) printf(fmt, ##__VA_ARGS__)
@@ -126,6 +127,20 @@ static char *get_header(const char *host, const char *path) {
   return buf_header;
 }
 
+static void header_content_length(char *buf, size_t len) {
+  size_t buf_body_len = 0;
+  size_t body_len = len, tmp_len = body_len;
+  while ((tmp_len /= 10) > 0) {
+
+    buf_body_len++;
+  }
+  buf_body_len++;
+
+  char buf_content_len[buf_body_len];
+  itoa(body_len, buf_content_len, 10);
+  strcat(buf, buf_content_len);
+}
+
 static char *header(size_t buf_length,
                     const char *headers,
                     const char *method,
@@ -169,17 +184,7 @@ User-Agent: {user_agent}
 
   if (body != NULL) {
     strcat(buf, "Content-Length: ");
-    size_t buf_body_len = 0;
-    size_t body_len = strlen(body), tmp_len = body_len;
-    while ((tmp_len /= 10) > 0) {
-
-      buf_body_len++;
-    }
-    buf_body_len++;
-
-    char buf_content_len[buf_body_len];
-    itoa(body_len, buf_content_len, 10);
-    strcat(buf, buf_content_len);
+    header_content_length(buf, strlen(body));
     strcat(buf, "\r\n");
 
   }
@@ -450,7 +455,153 @@ int ssl_write(https *h, const unsigned char *buf, size_t buf_len) {
   }
   return 0;
 }
+int ssl_write_file(https *h, const char *file_path, size_t buf_size) {
 
+  FILE *in = fopen(file_path, "r");
+  if (in == NULL) {
+    return 1;
+  }
+  char buf[buf_size];
+  size_t file_read, file_send;
+  while (1) {
+    file_read = read(in, buf, buf_size);
+    if (file_read == 0) {
+      close(in);
+      return 0;
+    }
+    while ((file_send = mbedtls_ssl_write(&h->ssl, buf, file_read)) <= 0) {
+      if (file_send != MBEDTLS_ERR_SSL_WANT_READ && file_send != MBEDTLS_ERR_SSL_WANT_WRITE) {
+        {
+          close(in);
+          return file_send;
+        }
+      }
+    }
+
+  }
+
+}
+
+static char *header_upload(size_t buf_len,
+                           size_t file_length,
+                           const char *path,
+                           const char *host,
+                           const char *boundary,
+                           const char *user_agent,
+                           const char *filename_field,
+                           const char *filename,
+                           const char *mime_type
+
+) {
+  /*
+   * image/jpeg
+POST {path} HTTP/1.1
+Host: {host}
+Content-Length: {file_length}
+Content-Type: multipart/form-data; boundary={boundary}
+User-Agent: {user_agent}
+
+--{boundary}
+Content-Disposition: form-data; name=\\u0022{filename_field}\\u0022; filename=\\u0022{filename}\\u0022
+Content-Type: {mime_type}
+
+{file_content}
+--{boundary}--
+   */
+
+  char header_file[256];
+  memset(header_file, 0, 256);
+  strcat(header_file, "--");
+  strcat(header_file, boundary);
+  strcat(header_file, "\r\n");
+  strcat(header_file, "Content-Disposition: form-data; name=\"");
+  strcat(header_file, filename_field);
+  strcat(header_file, "\"; filename=\"");
+  strcat(header_file, filename);
+  strcat(header_file, "\"");
+  strcat(header_file, "\r\n");
+  strcat(header_file, "Content-Type: ");
+  strcat(header_file, mime_type);
+  strcat(header_file, "\r\n");
+  strcat(header_file, "\r\n");
+
+  char *buf = malloc(buf_len);
+  if (buf == NULL) {
+    return NULL;
+  }
+  memset(buf, 0, buf_len);
+
+  strcat(buf, "POST ");
+  strcat(buf, path);
+  strcat(buf, " HTTP/1.1");
+  strcat(buf, "\r\n");
+  strcat(buf, "Host: ");
+  strcat(buf, host);
+  strcat(buf, "\r\n");
+  strcat(buf, "Content-Length: ");
+  header_content_length(buf, file_length + strlen(header_file));
+  strcat(buf, "\r\n");
+  strcat(buf, "Content-Type: multipart/form-data; boundary=");
+  strcat(buf, boundary);
+
+  strcat(buf, "\r\n");
+  strcat(buf, "User-Agent: ");
+  strcat(buf, user_agent);
+  strcat(buf, "\r\n");
+  strcat(buf, "\r\n");
+  strcat(buf, header_file);
+
+// const char *path,const char *host,const char *file_length,const char *boundary,const char *user_agent,const char *boundary,const char *filename_field,const char *filename,const char *mime_type
+// const char *path="";const char *host="";const char *file_length="";const char *boundary="";const char *user_agent="";const char *boundary="";const char *filename_field="";const char *filename="";const char *mime_type=""
+// path,host,file_length,boundary,user_agent,boundary,filename_field,filename,mime_type
+// strlen(path)+strlen(host)+strlen(file_length)+strlen(boundary)+strlen(user_agent)+strlen(boundary)+strlen(filename_field)+strlen(filename)+strlen(mime_type)
+
+  return buf;
+}
+static char *get_filename(const char *path) {
+  const char *s = path + strlen(path);
+  while (*--s && (*s != '\\' && *s != '/'));
+  if (*s)++s;
+  return s;
+}
+static char *get_upload_header() {
+  const char *file_path = "C:\\Users\\psycho\\CLionProjects\\mbedtls\\1.jpg";
+
+  struct stat stat_buf;
+  if (stat(file_path, &stat_buf) != 0) {
+
+  }
+  size_t file_length = stat_buf.st_size;
+
+  const char *port = "5000";
+  const char *method = "POST";
+  const char *path = "/api/upload";
+  const char *host = "localhost";
+  const char *content_type = "application/json";
+  const char *user_agent = "Mozilla/5.0";
+
+  const char *boundary = "----WebKitFormBoundaryTjlkgpnCWY9MNBrA";
+  const char *filename_field = "file";
+  const char *filename = get_filename(file_path);
+  const char *mime_type = "image/jpeg";
+
+  size_t buf_header_len =
+      strlen(path) + strlen(host) + strlen(boundary) + strlen(user_agent)
+          + strlen(boundary) + strlen(filename_field) + strlen(filename) + strlen(mime_type);
+
+  char *buf_header = header_upload(buf_header_len << 2,
+                                   file_length,
+                                   path,
+                                   host,
+                                   boundary,
+                                   user_agent,
+                                   filename_field,
+                                   filename,
+                                   mime_type);
+}
 int main() {
 
+  char *buf_header = get_upload_header();
+
+  printf("%s\n", buf_header);
 }
