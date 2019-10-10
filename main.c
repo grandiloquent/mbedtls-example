@@ -29,6 +29,7 @@ int ssl_connect(https *h, const char *host, const char *port);
 int ssl_handshake(https *h);
 int ssl_init(https *h);
 int ssl_setup(https *h, const char *host);
+char *ssl_read_fully(https *h);
 
 // ---------------------------------------------------------------
 
@@ -183,7 +184,7 @@ int ssl_setup(https *h, const char *host) {
   return 0;
 }
 
-char *ssl_read(https *h) {
+char *ssl_read_fully(https *h) {
   LOGE("%s\n", __FUNCTION__);
 
   char *buf = malloc(4096);
@@ -306,7 +307,7 @@ int main() {
     goto exit;
   }
 
-  char *buf = ssl_read(h);
+  char *buf = ssl_read_fully(h);
   mbedtls_ssl_close_notify(&h->ssl);
 
   if (buf != NULL) {

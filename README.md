@@ -6,5 +6,6 @@
     int ssl_handshake(https *h);
     int ssl_init(https *h);
     int ssl_setup(https *h, const char *host);
+    char *ssl_read_fully(https *h);
 
 - https://github.com/ARMmbed/mbedtls
