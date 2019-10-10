@@ -22,28 +22,8 @@ typedef struct {
 } https;
 
 // ---------------------------------------------------------------
-
-int ssl_certificates(https *h);
-int ssl_close(https *h);
-int ssl_connect(https *h, const char *host, const char *port);
-int ssl_handshake(https *h);
-int ssl_init(https *h);
-int ssl_setup(https *h, const char *host);
-char *ssl_read_fully(https *h);
-
-// ---------------------------------------------------------------
-
-
-int ssl_write(https *h, const unsigned char *buf, size_t buf_len) {
-  int ret;
-  while ((ret = mbedtls_ssl_write(&h->ssl, buf, buf_len)) <= 0) {
-    if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-      LOGE(" failed\n  ! mbedtls_ssl_write returned %d\n\n", ret);
-      return ret;
-    }
-  }
-  return 0;
-}
+static int get_bing();
+static char *get_header(const char *host, const char *path);
 static char *header(size_t buf_length,
                     const char *headers,
                     const char *method,
@@ -52,6 +32,99 @@ static char *header(size_t buf_length,
                     const char *content_type,
                     const char *user_agent,
                     const char *body);
+static int post_json();
+int ssl_certificates(https *h);
+int ssl_close(https *h);
+int ssl_connect(https *h, const char *host, const char *port);
+int ssl_handshake(https *h);
+int ssl_init(https *h);
+char *ssl_read_fully(https *h);
+int ssl_setup(https *h, const char *host);
+int ssl_write(https *h, const unsigned char *buf, size_t buf_len);
+
+// ---------------------------------------------------------------
+
+
+
+static int get_bing() {
+  const char *host = "cn.bing.com";
+  const char *port = "443";
+  const char *path = "/";
+
+  https *h = malloc(sizeof(https));
+
+//  int ret = ssl_init(h);
+//  ret = ssl_certificates(h);
+//  ret = ssl_connect(h, host, "443");
+//  ret = ssl_setup(h, host);
+//  ret = ssl_handshake(h);
+
+  int ret = ssl_init(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_init", ret);
+    goto exit;
+  }
+  ret = ssl_certificates(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_certificates", ret);
+    goto exit;
+  }
+  ret = ssl_connect(h, host, port);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_connect", ret);
+    goto exit;
+  }
+  ret = ssl_setup(h, host);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_setup", ret);
+    goto exit;
+  }
+  ret = ssl_handshake(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_handshake", ret);
+    goto exit;
+  }
+
+  char *buf_header = get_header(host, path);
+  if (buf_header == NULL) {
+    LOGE("Fail at get_header.\n");
+    goto exit;
+  }
+  ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
+  free(buf_header);
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_write", ret);
+    goto exit;
+  }
+
+  char *buf = ssl_read_fully(h);
+  mbedtls_ssl_close_notify(&h->ssl);
+
+  if (buf != NULL) {
+    LOGE("buf length %lld\n %s", strlen(buf), buf);
+    free(buf);
+  }
+
+  // --------------------------
+  exit:
+  ssl_close(h);
+  return ret;
+}
+
+static char *get_header(const char *host, const char *path) {
+  const char *method = "GET";
+  const char *user_agent = "Mozilla/5.0";
+  size_t
+      buf_header_length = (strlen(method) + strlen(path) + strlen(host) + strlen(user_agent));
+  char *buf_header =
+      header(buf_header_length + 50, NULL, method, path, host, NULL, user_agent, NULL);
+  return buf_header;
+}
 
 static char *header(size_t buf_length,
                     const char *headers,
@@ -137,6 +210,78 @@ User-Agent: {user_agent}
       buf;
 }
 
+static int post_json() {
+  const char *port = "5000";
+  const char *method = "POST";
+  const char *path = "/api/commands";
+  const char *host = "localhost";
+  const char *content_type = "application/json";
+  const char *user_agent = "Mozilla/5.0";
+  const char *body = "select id from note limit 5";
+
+  https *h = malloc(sizeof(https));
+
+  int ret = ssl_init(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_init", ret);
+    goto exit;
+  }
+  ret = ssl_certificates(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_certificates", ret);
+    goto exit;
+  }
+  ret = ssl_connect(h, host, port);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_connect", ret);
+    goto exit;
+  }
+  ret = ssl_setup(h, host);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_setup", ret);
+    goto exit;
+  }
+  ret = ssl_handshake(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_handshake", ret);
+    goto exit;
+  }
+  const char *headers = "Authorization: Bearer test\r\n";
+  size_t buf_header_len =
+      strlen(method) + strlen(path) + strlen(host)
+          + strlen(content_type) + strlen(user_agent) + strlen(body);
+  char *buf_header =
+      header(buf_header_len << 1, headers, method, path, host, content_type, user_agent, body);
+  if (buf_header == NULL) {
+    LOGE("Fail at get_header.\n");
+    goto exit;
+  }
+  ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
+  free(buf_header);
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_write", ret);
+    goto exit;
+  }
+
+  char *buf = ssl_read_fully(h);
+  mbedtls_ssl_close_notify(&h->ssl);
+
+  if (buf != NULL) {
+    LOGE("buf length %lld\n %s", strlen(buf), buf);
+    free(buf);
+  }
+
+  // --------------------------
+  exit:
+  ssl_close(h);
+  return ret;
+}
+
 int ssl_certificates(https *h) {
   ca_crt_rsa[ca_crt_rsa_size - 1] = 0;
 
@@ -195,35 +340,6 @@ int ssl_init(https *h) {
     LOGE(" failed\n  ! mbedtls_ctr_drbg_seed returned %d\n", ret);
     return 1;
   }
-  return 0;
-}
-
-int ssl_setup(https *h, const char *host) {
-  int ret;
-
-  if ((ret = mbedtls_ssl_config_defaults(&h->conf,
-                                         MBEDTLS_SSL_IS_CLIENT,
-                                         MBEDTLS_SSL_TRANSPORT_STREAM,
-                                         MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
-    LOGE(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n", ret);
-    return ret;
-  }
-
-  mbedtls_ssl_conf_authmode(&h->conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
-  mbedtls_ssl_conf_ca_chain(&h->conf, &h->crt, NULL);
-  mbedtls_ssl_conf_rng(&h->conf, mbedtls_ctr_drbg_random, &h->ctr_drbg);
-
-  if ((ret = mbedtls_ssl_setup(&h->ssl, &h->conf)) != 0) {
-    LOGE(" failed\n  ! mbedtls_ssl_setup returned %d\n\n", ret);
-    return ret;
-  }
-
-  if ((ret = mbedtls_ssl_set_hostname(&h->ssl, host)) != 0) {
-    LOGE(" failed\n  ! mbedtls_ssl_set_hostname returned %d\n\n", ret);
-    return ret;
-  }
-
-  mbedtls_ssl_set_bio(&h->ssl, &h->fd, mbedtls_net_send, mbedtls_net_recv, NULL);
   return 0;
 }
 
@@ -295,162 +411,44 @@ char *ssl_read_fully(https *h) {
   return buf;
 }
 
-static char *get_header(const char *host, const char *path) {
-  const char *method = "GET";
-  const char *user_agent = "Mozilla/5.0";
-  size_t
-      buf_header_length = (strlen(method) + strlen(path) + strlen(host) + strlen(user_agent));
-  char *buf_header =
-      header(buf_header_length + 50, NULL, method, path, host, NULL, user_agent, NULL);
-  return buf_header;
+int ssl_setup(https *h, const char *host) {
+  int ret;
+
+  if ((ret = mbedtls_ssl_config_defaults(&h->conf,
+                                         MBEDTLS_SSL_IS_CLIENT,
+                                         MBEDTLS_SSL_TRANSPORT_STREAM,
+                                         MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
+    LOGE(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n", ret);
+    return ret;
+  }
+
+  mbedtls_ssl_conf_authmode(&h->conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
+  mbedtls_ssl_conf_ca_chain(&h->conf, &h->crt, NULL);
+  mbedtls_ssl_conf_rng(&h->conf, mbedtls_ctr_drbg_random, &h->ctr_drbg);
+
+  if ((ret = mbedtls_ssl_setup(&h->ssl, &h->conf)) != 0) {
+    LOGE(" failed\n  ! mbedtls_ssl_setup returned %d\n\n", ret);
+    return ret;
+  }
+
+  if ((ret = mbedtls_ssl_set_hostname(&h->ssl, host)) != 0) {
+    LOGE(" failed\n  ! mbedtls_ssl_set_hostname returned %d\n\n", ret);
+    return ret;
+  }
+
+  mbedtls_ssl_set_bio(&h->ssl, &h->fd, mbedtls_net_send, mbedtls_net_recv, NULL);
+  return 0;
 }
 
-static int get_bing() {
-  const char *host = "cn.bing.com";
-  const char *port = "443";
-  const char *path = "/";
-
-  https *h = malloc(sizeof(https));
-
-//  int ret = ssl_init(h);
-//  ret = ssl_certificates(h);
-//  ret = ssl_connect(h, host, "443");
-//  ret = ssl_setup(h, host);
-//  ret = ssl_handshake(h);
-
-  int ret = ssl_init(h);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_init", ret);
-    goto exit;
+int ssl_write(https *h, const unsigned char *buf, size_t buf_len) {
+  int ret;
+  while ((ret = mbedtls_ssl_write(&h->ssl, buf, buf_len)) <= 0) {
+    if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+      LOGE(" failed\n  ! mbedtls_ssl_write returned %d\n\n", ret);
+      return ret;
+    }
   }
-  ret = ssl_certificates(h);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_certificates", ret);
-    goto exit;
-  }
-  ret = ssl_connect(h, host, port);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_connect", ret);
-    goto exit;
-  }
-  ret = ssl_setup(h, host);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_setup", ret);
-    goto exit;
-  }
-  ret = ssl_handshake(h);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_handshake", ret);
-    goto exit;
-  }
-
-  char *buf_header = get_header(host, path);
-  if (buf_header == NULL) {
-    LOGE("Fail at get_header.\n");
-    goto exit;
-  }
-  ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
-  free(buf_header);
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_write", ret);
-    goto exit;
-  }
-
-  char *buf = ssl_read_fully(h);
-  mbedtls_ssl_close_notify(&h->ssl);
-
-  if (buf != NULL) {
-    LOGE("buf length %lld\n %s", strlen(buf), buf);
-    free(buf);
-  }
-
-  // --------------------------
-  exit:
-  ssl_close(h);
-  return ret;
-}
-
-static int post_json() {
-  const char *port = "5000";
-  const char *method = "POST";
-  const char *path = "/api/commands";
-  const char *host = "localhost";
-  const char *content_type = "application/json";
-  const char *user_agent = "Mozilla/5.0";
-  const char *body = "select id from note limit 5";
-
-  https *h = malloc(sizeof(https));
-
-//  int ret = ssl_init(h);
-//  ret = ssl_certificates(h);
-//  ret = ssl_connect(h, host, "443");
-//  ret = ssl_setup(h, host);
-//  ret = ssl_handshake(h);
-
-  int ret = ssl_init(h);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_init", ret);
-    goto exit;
-  }
-  ret = ssl_certificates(h);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_certificates", ret);
-    goto exit;
-  }
-  ret = ssl_connect(h, host, port);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_connect", ret);
-    goto exit;
-  }
-  ret = ssl_setup(h, host);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_setup", ret);
-    goto exit;
-  }
-  ret = ssl_handshake(h);
-
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_handshake", ret);
-    goto exit;
-  }
-  const char *headers = "Authorization: Bearer test\r\n";
-  size_t buf_header_len =
-      strlen(method) + strlen(path) + strlen(host)
-          + strlen(content_type) + strlen(user_agent) + strlen(body);
-  char *buf_header =
-      header(buf_header_len << 1, headers, method, path, host, content_type, user_agent, body);
-  if (buf_header == NULL) {
-    LOGE("Fail at get_header.\n");
-    goto exit;
-  }
-  ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
-  free(buf_header);
-  if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_write", ret);
-    goto exit;
-  }
-
-  char *buf = ssl_read_fully(h);
-  mbedtls_ssl_close_notify(&h->ssl);
-
-  if (buf != NULL) {
-    LOGE("buf length %lld\n %s", strlen(buf), buf);
-    free(buf);
-  }
-
-  // --------------------------
-  exit:
-  ssl_close(h);
-  return ret;
+  return 0;
 }
 
 int main() {
