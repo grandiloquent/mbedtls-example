@@ -185,9 +185,12 @@ int ssl_setup(https *h, const char *host) {
 }
 
 char *ssl_read_fully(https *h) {
-  LOGE("%s\n", __FUNCTION__);
-
   char *buf = malloc(4096);
+  if (buf == NULL) {
+    LOGE("Failed at %s \nmalloc(4096)\n", __FUNCTION__);
+
+    return NULL;
+  }
   char *tmp = NULL;
   size_t size = 0, capacity = 4096, content_length = 0;
   ssize_t rret;
@@ -196,6 +199,10 @@ char *ssl_read_fully(https *h) {
     if (size == capacity) {
       capacity *= 2;
       buf = realloc(buf, capacity);
+      if (buf == NULL) {
+        LOGE("Failed at %s \nrealloc(%lld)\n", __FUNCTION__, capacity);
+        return NULL;
+      }
     }
     //LOGE("mbedtls_ssl_read %s %d\n", __FUNCTION__, capacity);
 
