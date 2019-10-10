@@ -305,7 +305,10 @@ int main() {
   }
 
   char *buf_header = get_header(host, path);
-
+  if (buf_header == NULL) {
+    LOGE("Fail at get_header.\n");
+    goto exit;
+  }
   ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
   free(buf_header);
   if (ret != 0) {
@@ -324,5 +327,6 @@ int main() {
   // --------------------------
   exit:
   ssl_close(h);
+  return ret;
 
 }
