@@ -305,9 +305,10 @@ int main() {
   }
 
   char *buf = ssl_read(h);
-  LOGE("%d", strlen(buf));
-
   mbedtls_ssl_close_notify(&h->ssl);
+
+  LOGE("buf length %lld\n", strlen(buf));
+  free(buf);
   exit:
 
   ssl_close(h);
