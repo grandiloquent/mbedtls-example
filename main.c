@@ -44,24 +44,37 @@ int ssl_write(https *h, const unsigned char *buf, size_t buf_len) {
   }
   return 0;
 }
-static char *header(const char *method,
+static char *header(size_t buf_length,
+                    const char *headers,
+                    const char *method,
                     const char *path,
                     const char *host,
-                    const char *user_agent, size_t buf_length);
+                    const char *content_type,
+                    const char *user_agent,
+                    const char *body);
 
-static char *header(const char *method,
+static char *header(size_t buf_length,
+                    const char *headers,
+                    const char *method,
                     const char *path,
                     const char *host,
-                    const char *user_agent, size_t buf_length) {
+                    const char *content_type,
+                    const char *user_agent,
+                    const char *body) {
   size_t len = buf_length;
   char *buf = malloc(len);
   if (buf == NULL)
     return NULL;
   memset(buf, 0, len);
 /*
+ * application/json
 {method} {path} HTTP/1.1
 Host: {host}
+Content-Length: {content_length}
+Content-Type: {content_type}
 User-Agent: {user_agent}
+
+{body}
 
   Connection: keep-alive <crlf>
   Accept: text/html,application/xhtml+xml,application/xml;q=0.9... <crlf>
@@ -80,18 +93,48 @@ User-Agent: {user_agent}
   strcat(buf, "Host: ");
   strcat(buf, host);
   strcat(buf, "\r\n");
+
+  if (body != NULL) {
+    strcat(buf, "Content-Length: ");
+    size_t buf_body_len = 0;
+    size_t body_len = strlen(body), tmp_len = body_len;
+    while ((tmp_len /= 10) > 0) {
+
+      buf_body_len++;
+    }
+    buf_body_len++;
+
+    char buf_content_len[buf_body_len];
+    itoa(body_len, buf_content_len, 10);
+    strcat(buf, buf_content_len);
+    strcat(buf, "\r\n");
+
+  }
+  if (content_type != NULL) {
+    strcat(buf, "Content-Type: ");
+    strcat(buf, content_type);
+    strcat(buf, "\r\n");
+  }
+
   strcat(buf, "User-Agent: ");
   strcat(buf, user_agent);
   strcat(buf, "\r\n");
+
+  if (headers != NULL) {
+    strcat(buf, headers);
+  }
   strcat(buf, "\r\n");
 
-// const char *method,const char *path,const char *host,const char *user_agent
-// const char *method="";const char *path="";const char *host="";const char *user_agent=""
-// method,path,host,user_agent
-// strlen(method)+strlen(path)+strlen(host)+strlen(user_agent)
+  if (body != NULL)
+    strcat(buf, body);
 
+// const char *method,const char *path,const char *host,const char *content_length,const char *content_type,const char *user_agent,const char *body
+// const char *method="";const char *path="";const char *host="";const char *content_length="";const char *content_type="";const char *user_agent="";const char *body=""
+// method,path,host,content_length,content_type,user_agent,body
+// strlen(method)+strlen(path)+strlen(host)+strlen(content_length)+strlen(content_type)+strlen(user_agent)+strlen(body)
 
-  return buf;
+  return
+      buf;
 }
 
 int ssl_certificates(https *h) {
@@ -257,10 +300,12 @@ static char *get_header(const char *host, const char *path) {
   const char *user_agent = "Mozilla/5.0";
   size_t
       buf_header_length = (strlen(method) + strlen(path) + strlen(host) + strlen(user_agent));
-  char *buf_header = header(method, path, host, user_agent, buf_header_length + 50);
+  char *buf_header =
+      header(buf_header_length + 50, NULL, method, path, host, NULL, user_agent, NULL);
   return buf_header;
 }
-int main() {
+
+static int get_bing() {
   const char *host = "cn.bing.com";
   const char *port = "443";
   const char *path = "/";
@@ -328,5 +373,86 @@ int main() {
   exit:
   ssl_close(h);
   return ret;
+}
+
+static int post_json() {
+  const char *port = "5000";
+  const char *method = "POST";
+  const char *path = "/api/commands";
+  const char *host = "localhost";
+  const char *content_type = "application/json";
+  const char *user_agent = "Mozilla/5.0";
+  const char *body = "select id from note limit 5";
+
+  https *h = malloc(sizeof(https));
+
+//  int ret = ssl_init(h);
+//  ret = ssl_certificates(h);
+//  ret = ssl_connect(h, host, "443");
+//  ret = ssl_setup(h, host);
+//  ret = ssl_handshake(h);
+
+  int ret = ssl_init(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_init", ret);
+    goto exit;
+  }
+  ret = ssl_certificates(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_certificates", ret);
+    goto exit;
+  }
+  ret = ssl_connect(h, host, port);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_connect", ret);
+    goto exit;
+  }
+  ret = ssl_setup(h, host);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_setup", ret);
+    goto exit;
+  }
+  ret = ssl_handshake(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_handshake", ret);
+    goto exit;
+  }
+  const char *headers = "Authorization: Bearer test\r\n";
+  size_t buf_header_len =
+      strlen(method) + strlen(path) + strlen(host)
+          + strlen(content_type) + strlen(user_agent) + strlen(body);
+  char *buf_header =
+      header(buf_header_len << 1, headers, method, path, host, content_type, user_agent, body);
+  if (buf_header == NULL) {
+    LOGE("Fail at get_header.\n");
+    goto exit;
+  }
+  ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
+  free(buf_header);
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_write", ret);
+    goto exit;
+  }
+
+  char *buf = ssl_read_fully(h);
+  mbedtls_ssl_close_notify(&h->ssl);
+
+  if (buf != NULL) {
+    LOGE("buf length %lld\n %s", strlen(buf), buf);
+    free(buf);
+  }
+
+  // --------------------------
+  exit:
+  ssl_close(h);
+  return ret;
+}
+
+int main() {
 
 }
