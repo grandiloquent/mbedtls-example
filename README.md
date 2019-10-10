@@ -1,21 +1,41 @@
 # mbedtls examples
 
-    typedef struct {
-      mbedtls_net_context fd;
-      mbedtls_entropy_context entropy;
-      mbedtls_ctr_drbg_context ctr_drbg;
-      mbedtls_ssl_context ssl;
-      mbedtls_ssl_config conf;
-      mbedtls_x509_crt crt;
-    } https;
+```
+static int get_bing();
+static char *get_filename(const char *path);
+static char *get_header(const char *host, const char *path);
+static char *get_upload_header();
+static char *header(size_t buf_length,
+                    const char *headers,
+                    const char *method,
+                    const char *path,
+                    const char *host,
+                    const char *content_type,
+                    const char *user_agent,
+                    const char *body);
+static void header_content_length(char *buf, size_t len);
+static char *header_upload(size_t buf_len,
+                           size_t file_length,
+                           const char *path,
+                           const char *host,
+                           const char *boundary,
+                           const char *user_agent,
+                           const char *filename_field,
+                           const char *filename,
+                           const char *mime_type
 
-    int ssl_certificates(https *h);
-    int ssl_close(https *h);
-    int ssl_connect(https *h, const char *host, const char *port);
-    int ssl_handshake(https *h);
-    int ssl_init(https *h);
-    int ssl_setup(https *h, const char *host);
-    char *ssl_read_fully(https *h);
+);
+static int post_json();
+int ssl_certificates(https *h);
+int ssl_close(https *h);
+int ssl_connect(https *h, const char *host, const char *port);
+int ssl_handshake(https *h);
+int ssl_init(https *h);
+char *ssl_read_fully(https *h);
+int ssl_setup(https *h, const char *host);
+int ssl_write(https *h, const unsigned char *buf, size_t buf_len);
+int ssl_write_file(https *h, const char *file_path, size_t buf_size);
+```
 
 ```
 POST /api/upload HTTP/1.1
