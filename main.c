@@ -10,7 +10,7 @@
 #include <errno.h>
 #include "ca_cert.h"
 
-#define LOGE(...)printf(___VAR_);
+#define LOGE(fmt, ...) printf(fmt, ##__VA_ARGS__)
 
 typedef struct {
   mbedtls_net_context fd;
@@ -37,7 +37,7 @@ int ssl_write(https *h, const unsigned char *buf, size_t buf_len) {
   int ret;
   while ((ret = mbedtls_ssl_write(&h->ssl, buf, buf_len)) <= 0) {
     if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-      printf(" failed\n  ! mbedtls_ssl_write returned %d\n\n", ret);
+      LOGE(" failed\n  ! mbedtls_ssl_write returned %d\n\n", ret);
       return ret;
     }
   }
@@ -99,7 +99,7 @@ int ssl_certificates(https *h) {
   int ret = mbedtls_x509_crt_parse(&h->crt, (const unsigned char *) ca_crt_rsa,
                                    ca_crt_rsa_size);
   if (ret < 0) {
-    printf(" failed\n  !  mbedtls_x509_crt_parse returned -0x%x\n\n", -ret);
+    LOGE(" failed\n  !  mbedtls_x509_crt_parse returned -0x%x\n\n", -ret);
     return ret;
   }
   return 0;
@@ -119,7 +119,7 @@ int ssl_connect(https *h, const char *host, const char *port) {
   int ret;
   if ((ret = mbedtls_net_connect(&h->fd, host,
                                  port, MBEDTLS_NET_PROTO_TCP)) != 0) {
-    printf(" failed\n  ! mbedtls_net_connect returned %d\n\n", ret);
+    LOGE(" failed\n  ! mbedtls_net_connect returned %d\n\n", ret);
     return ret;
   }
   return 0;
@@ -130,7 +130,7 @@ int ssl_handshake(https *h) {
   int ret;
   while ((ret = mbedtls_ssl_handshake(&h->ssl)) != 0) {
     if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
-      printf(" failed\n  ! mbedtls_ssl_handshake returned -0x%x\n\n", -ret);
+      LOGE(" failed\n  ! mbedtls_ssl_handshake returned -0x%x\n\n", -ret);
       return ret;
     }
   }
@@ -148,7 +148,7 @@ int ssl_init(https *h) {
   mbedtls_entropy_init(&h->entropy);
   if ((ret = mbedtls_ctr_drbg_seed(&h->ctr_drbg, mbedtls_entropy_func, &h->entropy,
                                    NULL, 0)) != 0) {
-    printf(" failed\n  ! mbedtls_ctr_drbg_seed returned %d\n", ret);
+    LOGE(" failed\n  ! mbedtls_ctr_drbg_seed returned %d\n", ret);
     return 1;
   }
   return 0;
@@ -161,7 +161,7 @@ int ssl_setup(https *h, const char *host) {
                                          MBEDTLS_SSL_IS_CLIENT,
                                          MBEDTLS_SSL_TRANSPORT_STREAM,
                                          MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
-    printf(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n", ret);
+    LOGE(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n", ret);
     return ret;
   }
 
@@ -170,12 +170,12 @@ int ssl_setup(https *h, const char *host) {
   mbedtls_ssl_conf_rng(&h->conf, mbedtls_ctr_drbg_random, &h->ctr_drbg);
 
   if ((ret = mbedtls_ssl_setup(&h->ssl, &h->conf)) != 0) {
-    printf(" failed\n  ! mbedtls_ssl_setup returned %d\n\n", ret);
+    LOGE(" failed\n  ! mbedtls_ssl_setup returned %d\n\n", ret);
     return ret;
   }
 
   if ((ret = mbedtls_ssl_set_hostname(&h->ssl, host)) != 0) {
-    printf(" failed\n  ! mbedtls_ssl_set_hostname returned %d\n\n", ret);
+    LOGE(" failed\n  ! mbedtls_ssl_set_hostname returned %d\n\n", ret);
     return ret;
   }
 
@@ -184,7 +184,7 @@ int ssl_setup(https *h, const char *host) {
 }
 
 char *ssl_read(https *h) {
-  printf("%s\n", __FUNCTION__);
+  LOGE("%s\n", __FUNCTION__);
 
   char *buf = malloc(4096);
   char *tmp = NULL;
@@ -196,7 +196,7 @@ char *ssl_read(https *h) {
       capacity *= 2;
       buf = realloc(buf, capacity);
     }
-    //printf("mbedtls_ssl_read %s %d\n", __FUNCTION__, capacity);
+    //LOGE("mbedtls_ssl_read %s %d\n", __FUNCTION__, capacity);
 
     rret = mbedtls_ssl_read(&h->ssl, buf + size, capacity - size);
 
@@ -229,12 +229,12 @@ char *ssl_read(https *h) {
       break;
 
     if (rret < 0) {
-      printf("failed\n  ! mbedtls_ssl_read returned %d\n\n", rret);
+      LOGE("failed\n  ! mbedtls_ssl_read returned %d\n\n", rret);
       break;
     }
 
     if (rret == 0) {
-      printf("\n\nEOF\n\n");
+      LOGE("\n\nEOF\n\n");
       break;
     }
 
@@ -267,31 +267,31 @@ int main() {
   int ret = ssl_init(h);
 
   if (ret != 0) {
-    printf("%s:%d\n", "ssl_init", ret);
+    LOGE("%s:%d\n", "ssl_init", ret);
     goto exit;
   }
   ret = ssl_certificates(h);
 
   if (ret != 0) {
-    printf("%s:%d\n", "ssl_certificates", ret);
+    LOGE("%s:%d\n", "ssl_certificates", ret);
     goto exit;
   }
   ret = ssl_connect(h, host, "443");
 
   if (ret != 0) {
-    printf("%s:%d\n", "ssl_connect", ret);
+    LOGE("%s:%d\n", "ssl_connect", ret);
     goto exit;
   }
   ret = ssl_setup(h, host);
 
   if (ret != 0) {
-    printf("%s:%d\n", "ssl_setup", ret);
+    LOGE("%s:%d\n", "ssl_setup", ret);
     goto exit;
   }
   ret = ssl_handshake(h);
 
   if (ret != 0) {
-    printf("%s:%d\n", "ssl_handshake", ret);
+    LOGE("%s:%d\n", "ssl_handshake", ret);
     goto exit;
   }
 
@@ -300,12 +300,12 @@ int main() {
   ret = ssl_write(h, buf_header, strlen(buf_header));
   free(buf_header);
   if (ret != 0) {
-    printf("%s:%d\n", "ssl_write", ret);
+    LOGE("%s:%d\n", "ssl_write", ret);
     goto exit;
   }
 
   char *buf = ssl_read(h);
-  printf("%d", strlen(buf));
+  LOGE("%d", strlen(buf));
 
   mbedtls_ssl_close_notify(&h->ssl);
   exit:
