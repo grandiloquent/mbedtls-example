@@ -65,19 +65,6 @@ Content-Type: image/jpeg
 ------WebKitFormBoundaryTjlkgpnCWY9MNBrA--
 ```
 
-```
-GET /api/test HTTP/1.1
-Host: localhost:5000
-Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3
-Accept-Encoding: gzip, deflate, br
-Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
-Connection: keep-alive
-Cookie: _ga=GA1.1.1819275317.1565499913; _gid=GA1.1.497015746.1570667806
-Upgrade-Insecure-Requests: 1
-User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3724.8 Safari/537.36
-
-
-```
 
 
 
