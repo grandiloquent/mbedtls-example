@@ -218,7 +218,7 @@ char *ssl_read(https *h) {
     if (content_length != 0) {
       char *buf_body = strstr(buf, "\r\n\r\n");
       if (buf_body != NULL && strlen(buf_body) + 4 >= content_length) {
-        return buf_body;
+        return buf;
       }
     }
     //while ((rret = mbedtls_ssl_read(&h->ssl, buf + size, capacity - size)) == -1 && errno == EINTR);
@@ -309,7 +309,7 @@ int main() {
 
   if (buf != NULL) {
     LOGE("buf length %lld\n %s", strlen(buf), buf);
-    //free(buf);
+    free(buf);
   }
 
   // --------------------------
