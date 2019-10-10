@@ -231,7 +231,6 @@ char *ssl_read_fully(https *h) {
         return buf;
       }
     }
-    //while ((rret = mbedtls_ssl_read(&h->ssl, buf + size, capacity - size)) == -1 && errno == EINTR);
     if (rret == MBEDTLS_ERR_SSL_WANT_READ || rret == MBEDTLS_ERR_SSL_WANT_WRITE)
       continue;
 
