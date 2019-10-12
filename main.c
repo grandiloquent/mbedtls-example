@@ -9,6 +9,7 @@
 #include <mbedtls/certs.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include "ca_cert.h"
 
 #define LOGE(fmt, ...) printf(fmt, ##__VA_ARGS__)
@@ -330,6 +331,7 @@ Content-Type: {mime_type}
   strcat(buf, host);
   strcat(buf, "\r\n");
   strcat(buf, "Content-Length: ");
+  printf("%d %d", file_length, strlen(header_file));
   header_content_length(buf, file_length + strlen(header_file));
   strcat(buf, "\r\n");
   strcat(buf, "Content-Type: multipart/form-data; boundary=");
@@ -582,18 +584,32 @@ int ssl_setup(https *h, const char *host) {
 
 int ssl_write(https *h, const unsigned char *buf, size_t buf_len) {
   int ret;
-  while ((ret = mbedtls_ssl_write(&h->ssl, buf, buf_len)) <= 0) {
-    if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+  void *p = buf;
+
+  while (buf_len > 0) {
+    ret = mbedtls_ssl_write(&h->ssl, p, buf_len);
+    if (ret <= 0 && ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
       LOGE(" failed\n  ! mbedtls_ssl_write returned %d\n\n", ret);
       return ret;
     }
+    buf_len -= ret;
+    p += ret;
   }
   return 0;
+//  while ((ret = mbedtls_ssl_write(&h->ssl, p, buf_len)) <= 0) {
+//    if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+//      LOGE(" failed\n  ! mbedtls_ssl_write returned %d\n\n", ret);
+//      return ret;
+//    }
+//    buf_len -= ret;
+//    buf += ret;
+//  }
+//  return 0;
 }
 
 int ssl_write_file(https *h, const char *file_path, size_t buf_size) {
 
-  FILE *in = fopen(file_path, "r");
+  int in = open(file_path, O_RDONLY);
   if (in == NULL) {
     return 1;
   }
@@ -616,6 +632,7 @@ int ssl_write_file(https *h, const char *file_path, size_t buf_size) {
           && file_send != MBEDTLS_ERR_SSL_WANT_WRITE) {
         {
           close(in);
+          break;
           //return file_send;
         }
         file_read -= file_send;
@@ -627,7 +644,21 @@ int ssl_write_file(https *h, const char *file_path, size_t buf_size) {
   return 0;
 
 }
+static inline int read_file_into_buf(const char *file, char **buf, long *filesize) {
+  FILE *fp;
 
+  fp = fopen(file, "rb");
+  fseek(fp, 0, SEEK_END);
+  *filesize = ftell(fp);
+  fseek(fp, 0, SEEK_SET);
+  *buf = malloc(*filesize);
+  if (fread(*buf, 1, *filesize, fp) < *filesize) {
+    perror("fread error.\n");
+    return -1;
+  }
+  fclose(fp);
+  return 0;
+}
 int main() {
 
   const char *file_path = "C:\\Users\\psycho\\CLionProjects\\mbedtls\\1.jpg";
@@ -648,12 +679,14 @@ int main() {
   const char *filename = get_filename(file_path);
   const char *mime_type = "image/jpeg";
 
+  MAKE_BOUNDARY();
+
   size_t buf_header_len =
       strlen(path) + strlen(host) + strlen(boundary) + strlen(user_agent)
           + strlen(boundary) + strlen(filename_field) + strlen(filename) + strlen(mime_type);
 
   char *buf_header = header_upload(buf_header_len << 2,
-                                   file_length,
+                                   file_length + strlen(buf_boundary),
                                    path,
                                    host,
                                    boundary,
@@ -661,8 +694,6 @@ int main() {
                                    filename_field,
                                    filename,
                                    mime_type);
-
-  MAKE_BOUNDARY();
 
   https *h = malloc(sizeof(https));
 
@@ -702,14 +733,20 @@ int main() {
     goto exit;
   }
   ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
-  free(buf_header);
+  //free(buf_header);
   if (ret != 0) {
     LOGE("%s:%d\n", "ssl_write", ret);
     goto exit;
   }
-  ret = ssl_write_file(h, file_path, 8192);
+
+  long file_size;
+  char *file_buf;
+  read_file_into_buf(file_path, &file_buf, &file_size);
+  printf("file size %ld \n %s\n", file_size, buf_header);
+
+  ret = ssl_write(h, file_buf, file_size);
   if (ret != 0) {
-    LOGE("%s:%d\n", "ssl_write", ret);
+    LOGE("%s:%d\n", "ssl_write_file", ret);
     goto exit;
   }
   ret = ssl_write(h, buf_boundary, strlen(buf_boundary));
