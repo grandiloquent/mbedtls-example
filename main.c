@@ -598,23 +598,33 @@ int ssl_write_file(https *h, const char *file_path, size_t buf_size) {
     return 1;
   }
   char buf[buf_size];
-  size_t file_read, file_send;
+  int file_read, file_send;
   while (1) {
     file_read = read(in, buf, buf_size);
+    if (file_read < 0) {
+      close(in);
+      return 1;
+    }
     if (file_read == 0) {
       close(in);
       return 0;
     }
-    while ((file_send = mbedtls_ssl_write(&h->ssl, buf, file_read)) <= 0) {
-      if (file_send != MBEDTLS_ERR_SSL_WANT_READ && file_send != MBEDTLS_ERR_SSL_WANT_WRITE) {
+    void *p = buf;
+    while (file_read > 0) {
+      file_send = mbedtls_ssl_write(&h->ssl, p, file_read);
+      if (file_send <= 0 && file_send != MBEDTLS_ERR_SSL_WANT_READ
+          && file_send != MBEDTLS_ERR_SSL_WANT_WRITE) {
         {
           close(in);
-          return file_send;
+          //return file_send;
         }
+        file_read -= file_send;
+        p += file_send;
       }
     }
 
   }
+  return 0;
 
 }
 
@@ -697,7 +707,7 @@ int main() {
     LOGE("%s:%d\n", "ssl_write", ret);
     goto exit;
   }
-  ret = ssl_write_file(h, file_path, 1024);
+  ret = ssl_write_file(h, file_path, 8192);
   if (ret != 0) {
     LOGE("%s:%d\n", "ssl_write", ret);
     goto exit;
