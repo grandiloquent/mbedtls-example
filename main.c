@@ -12,6 +12,10 @@
 #include "ca_cert.h"
 
 #define LOGE(fmt, ...) printf(fmt, ##__VA_ARGS__)
+#define  MAKE_BOUNDARY() const char *buf_boundary_format = "\r\n--%s--\r\n";    \
+  size_t buf_boundary_length = strlen(buf_boundary_format) + strlen(boundary);    \
+  char buf_boundary[buf_boundary_length];    \
+  snprintf(buf_boundary, buf_boundary_length, buf_boundary_format, boundary)
 
 typedef struct {
   mbedtls_net_context fd;
@@ -261,13 +265,11 @@ static void header_content_length(char *buf, size_t len) {
   size_t buf_body_len = 0;
   size_t body_len = len, tmp_len = body_len;
   while ((tmp_len /= 10) > 0) {
-
     buf_body_len++;
   }
-  buf_body_len++;
-
+  buf_body_len += 2;
   char buf_content_len[buf_body_len];
-  itoa(body_len, buf_content_len, 10);
+  snprintf(buf_content_len, buf_body_len, "%d", body_len);
   strcat(buf, buf_content_len);
 }
 
@@ -618,7 +620,105 @@ int ssl_write_file(https *h, const char *file_path, size_t buf_size) {
 
 int main() {
 
-  char *buf_header = get_upload_header();
+  const char *file_path = "C:\\Users\\psycho\\CLionProjects\\mbedtls\\1.jpg";
 
-  printf("%s\n", buf_header);
+  struct stat stat_buf;
+  if (stat(file_path, &stat_buf) != 0) {
+
+  }
+  size_t file_length = stat_buf.st_size;
+
+  const char *port = "5000";
+  const char *path = "/api/upload";
+  const char *host = "localhost";
+  const char *user_agent = "Mozilla/5.0";
+
+  const char *boundary = "----WebKitFormBoundaryTjlkgpnCWY9MNBrA";
+  const char *filename_field = "file";
+  const char *filename = get_filename(file_path);
+  const char *mime_type = "image/jpeg";
+
+  size_t buf_header_len =
+      strlen(path) + strlen(host) + strlen(boundary) + strlen(user_agent)
+          + strlen(boundary) + strlen(filename_field) + strlen(filename) + strlen(mime_type);
+
+  char *buf_header = header_upload(buf_header_len << 2,
+                                   file_length,
+                                   path,
+                                   host,
+                                   boundary,
+                                   user_agent,
+                                   filename_field,
+                                   filename,
+                                   mime_type);
+
+  MAKE_BOUNDARY();
+
+  https *h = malloc(sizeof(https));
+
+  int ret = ssl_init(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_init", ret);
+    goto exit;
+  }
+  ret = ssl_certificates(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_certificates", ret);
+    goto exit;
+  }
+  ret = ssl_connect(h, host, port);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_connect", ret);
+    goto exit;
+  }
+  ret = ssl_setup(h, host);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_setup", ret);
+    goto exit;
+  }
+  ret = ssl_handshake(h);
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_handshake", ret);
+    goto exit;
+  }
+
+  if (buf_header == NULL) {
+    LOGE("Fail at get_header.\n");
+    goto exit;
+  }
+  ret = ssl_write(h, (const unsigned char *) buf_header, strlen(buf_header));
+  free(buf_header);
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_write", ret);
+    goto exit;
+  }
+  ret = ssl_write_file(h, file_path, 1024);
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_write", ret);
+    goto exit;
+  }
+  ret = ssl_write(h, buf_boundary, strlen(buf_boundary));
+
+  if (ret != 0) {
+    LOGE("%s:%d\n", "ssl_write", ret);
+    goto exit;
+  }
+  char *buf = ssl_read_fully(h);
+  mbedtls_ssl_close_notify(&h->ssl);
+
+  if (buf != NULL) {
+    LOGE("buf length %lld\n %s", strlen(buf), buf);
+    free(buf);
+  }
+
+  // --------------------------
+  exit:
+  ssl_close(h);
+  return ret;
 }
+
